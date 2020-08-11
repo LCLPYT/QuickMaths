@@ -7,5 +7,6 @@ solveBtn.addEventListener("click", () => {
 });
 
 function solve(text) {
-    PARSER.parse(text);
+    let parsed = PARSER.parse(text);
+    console.log(parsed);
 }
