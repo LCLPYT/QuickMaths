@@ -22,14 +22,18 @@ export function parse(expr) {
 
         if(multChildren.length === 1) return new ValueNode(children[0]);
         else {
-            let rootNode = new MultiplicativeNode(new ValueNode(multChildren[0]));
+            let rootNode = new MultiplicativeNode(parse(multChildren[0]));
             let node = rootNode;
-            for(let i = 1; i < multChildren.length; i++) {
-                let childNode = parse(multChildren[i]);
+            for(let i = 1; i < multChildren.length - 1; i++) {
+                let childNode = new MultiplicativeNode(parse(multChildren[i]));
                 if(i - 1 >= 0 && !multPositions[i - 1].mult) childNode.inverse();
                 node.children.push(childNode);
-                if(multChildren.length < i + 1) node = childNode;
+                node = childNode;
             }
+            let endNode = parse(multChildren[multChildren.length - 1]);
+            if(!multPositions[multPositions.length - 1].mult) endNode.inverse();
+            node.children.push(endNode);
+
             return rootNode;
         }
     }
@@ -113,7 +117,7 @@ export class ValueNode extends Node {
     }
 }
 
-export class FunctionNode extends Node {
+/*export class FunctionNode extends Node {
     constructor(transformer) {
         super();
         this.transformer = transformer;
@@ -138,16 +142,26 @@ export class FunctionNode extends Node {
         this.transformer = x => 1 / x.calculate();
         this.children.length = 0;
         this.children.push(newChild);
+        return newChild;
     }
-}
+}*/
 
-export class MultiplicativeNode extends FunctionNode {
+export class MultiplicativeNode extends Node{
     constructor(factor) {
-        super(x => x.calculate() * this.getFactor().calculate());
+        super();
         this.factor = factor;
     }
 
-    getFactor() {
-        return this.factor;
+    calculate() {
+        if(this.children.length != 1) throw new Error("Children count must be = 1");
+        return this.children[0].calculate() * this.factor.calculate();
+    }
+
+    multiply(x) {
+        this.factor.multiply(x);
+    }
+
+    inverse() {
+        this.factor.inverse();
     }
 }
