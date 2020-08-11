@@ -3,6 +3,7 @@
  * @param {string} expr 
  */
 export function parse(expr) {
+    expr = expr.replace(/\s/g, '');
     let equalsSplit = expr.split("=");
     if(equalsSplit.length === 2) {
         let node = new EqualsNode();
@@ -10,17 +11,33 @@ export function parse(expr) {
         return node;
     } else if(equalsSplit.length > 2) throw new Error("Illegal state: more than one equals sign.")
 
-    let operandPositions = getOperands(expr);
+    let addPositions = getAddOperands(expr);
     let children = expr.split(/\s?[+-]{1}\s?/g);
-    if(children.length != operandPositions.length + 1) throw new Error("Illegal state: operand count not valid with childcount");
+    if(children.length != addPositions.length + 1) throw new Error("Illegal state: add operand count not valid with childcount");
 
-    if(children.length === 1) return new NonAdditiveNode(children[0]);
+    if(children.length === 1) {
+        let multPositions = getMultOperands(expr);
+        let multChildren = children[0].split(/\s?[*/]{1}\s?/g);
+        if(multChildren.length != multPositions.length + 1) throw new Error("Illegal state: mult operand count not valid with childcount");
+
+        if(multChildren.length === 1) return new ValueNode(children[0]);
+        else {
+            let rootNode = new MultiplicativeNode(new ValueNode(multChildren[0]));
+            let node = rootNode;
+            for(let i = 1; i < multChildren.length; i++) {
+                let childNode = parse(multChildren[i]);
+                if(i - 1 >= 0 && !multPositions[i - 1].mult) childNode.inverse();
+                node.children.push(childNode);
+                if(multChildren.length < i + 1) node = childNode;
+            }
+            return rootNode;
+        }
+    }
     else {
         let node = new AdditiveNode();
         for(let i = 0; i < children.length; i++) {
-            let elem = children[i];
-            let childNode = parse(elem);
-            if(i - 1 >= 0 && !operandPositions[i - 1].plus) childNode.multiply(-1);
+            let childNode = parse(children[i]);
+            if(i - 1 >= 0 && !addPositions[i - 1].plus) childNode.multiply(-1);
             node.children.push(childNode);
         }
         return node;
@@ -31,11 +48,24 @@ export function parse(expr) {
  * 
  * @param {string} expr 
  */
-function getOperands(expr) {
+function getAddOperands(expr) {
     let positions = [];
     for(let i = 0; i < expr.length; i++) {
         let char = expr.charAt(i);
         if(char === "+" || char === "-") positions.push({ index: i, plus: char === "+" });
+    }
+    return positions;
+}
+
+/**
+ * 
+ * @param {string} expr 
+ */
+function getMultOperands(expr) {
+    let positions = [];
+    for(let i = 0; i < expr.length; i++) {
+        let char = expr.charAt(i);
+        if(char === "*" || char === "/") positions.push({ index: i, mult: char === "*" });
     }
     return positions;
 }
@@ -59,22 +89,65 @@ export class AdditiveNode extends Node {
 
     calculate() {
         let value = 0;
-        this.children.forEach(x => value += x.getValue());
+        this.children.forEach(x => value += x.calculate());
         return value;
     }
 }
 
-export class NonAdditiveNode extends Node {
+export class ValueNode extends Node {
     constructor(value) {
         super();
         this.value = Number(value);
     }
 
-    getValue() {
+    calculate() {
         return this.value;
     }
 
     multiply(x) {
         this.value *= x;
+    }
+
+    inverse() {
+        this.value = 1 / this.value;
+    }
+}
+
+export class FunctionNode extends Node {
+    constructor(transformer) {
+        super();
+        this.transformer = transformer;
+    }
+
+    calculate() {
+        if(this.children.length != 1) throw new Error("Children count must be = 1");
+        return this.transformer(this.children[0]);
+    }
+
+    multiply(x) {
+        let newChild = new FunctionNode(this.transformer);
+        newChild.children = this.children.map(x => x); // Clone the children array
+        this.transformer = y => x * y.calculate();
+        this.children.length = 0;
+        this.children.push(newChild);
+    }
+
+    inverse() {
+        let newChild = new FunctionNode(this.transformer);
+        newChild.children = this.children.map(x => x); // Clone the children array
+        this.transformer = x => 1 / x.calculate();
+        this.children.length = 0;
+        this.children.push(newChild);
+    }
+}
+
+export class MultiplicativeNode extends FunctionNode {
+    constructor(factor) {
+        super(x => x.calculate() * this.getFactor().calculate());
+        this.factor = factor;
+    }
+
+    getFactor() {
+        return this.factor;
     }
 }
